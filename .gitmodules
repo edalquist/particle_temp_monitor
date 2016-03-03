@@ -1,0 +1,6 @@
+[submodule "sparkcore.thingspeak"]
+	path = sparkcore.thingspeak
+	url = https://github.com/dareid/sparkcore.thingspeak.git
+[submodule "firmware"]
+	path = firmware
+	url = https://github.com/dareid/sparkcore.thingspeak.git

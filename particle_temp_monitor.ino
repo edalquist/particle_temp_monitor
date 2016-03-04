@@ -15,11 +15,23 @@
  */
 
 #include "thingspeak.h"
+#include "HttpClient.h"
 #include "credentials.h"
 #include <vector>
 #include <map>
 
 ThingSpeakLibrary::ThingSpeak thingspeak (THINGSPEAK_KEY);
+HttpClient http;
+// Headers currently need to be set at init, useful for API keys etc.
+http_header_t headers[] = {
+   { "Content-Type", "application/json" },
+   { "X-Auth-Token", UBIDOTS_KEY},
+   { NULL, NULL } // NOTE: Always terminate headers will NULL
+};
+
+http_request_t request;
+http_response_t response;
+
 
 // Samples to average
 const int WINDOW_SIZE = 300;
@@ -35,13 +47,14 @@ struct SensorDesc {
     String desc;
     int pin;
     int thingspeakFieldId;
+    String ubidotsVar;
 };
 
 // Define our 3 sensors
 std::vector<SensorDesc> SENSORS = {
-    {"Outside", A1, 2},
-    {"Top",     A0, 1},
-    {"Bottom",  A2, 3},
+    {"Outside", A1, 2, UBIDOTS_VAR_OUTSIDE},
+    {"Top",     A0, 1, UBIDOTS_VAR_FREEZER_TOP},
+    {"Bottom",  A2, 3, UBIDOTS_VAR_FREEZER_BOTTOM}
 };
 
 // list of list of doubles that will track sensor readings across all the sensors
@@ -64,6 +77,10 @@ void setup() {
         Particle.publish("set_input", sensorDesc);
         pinMode(sensor.pin, INPUT);
     }
+
+    request.hostname = "things.ubidots.com";
+    request.port = 80;
+    request.path = "/api/v1.6/collections/values";
 
     // Set lastUpdate to at least one interval into the future
     lastUpdate = Time.now() + UPDATE_INTERVAL;
@@ -103,6 +120,7 @@ void loop() {
 
     if (lastUpdate + UPDATE_INTERVAL <= Time.now()) {
         String eventData = "";
+        String ubidotsData = "[";
 
         // Iterate over all of the sensors
         int sensorIdx = 0;
@@ -128,16 +146,25 @@ void loop() {
             eventData.concat(": ");
             eventData.concat(avgStr);
 
+            ubidotsData.concat(String::format("{\"variable\": \"%s\", \"value\":%s}", sensor.ubidotsVar.c_str(), avgStr.c_str()));
+
             // Increment sensor index and append comma to event string if this isn't the last sensor
             if (++sensorIdx < SENSORS.size()) {
                 eventData.concat(", ");
+                ubidotsData.concat(", ");
             }
         }
+
+        ubidotsData.concat("]");
 
         // Publish data
         thingspeak.sendValues();
         Particle.publish("temps", eventData);
 
+        // Post data to ubidots
+        request.body = ubidotsData;
+        http.post(request, response, headers);
+        
         lastUpdate = Time.now();
     }
 
